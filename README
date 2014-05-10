@@ -1,0 +1,102 @@
+Code Authors: Michael Baptist 
+Lab Section : Monday 12 - 2 
+
+Compile: .c -> .o -> binexec
+
+1.	generate .o file : gcc -g -O0 -Wall -Wextra -std=gnu99 -c [.c file]
+2.	generate bin exec: gcc -g -O0 -Wall -Wextra -std=gnu99 -o [exec] [.o file]
+
+Alternativly use my Makefile.
+1. make all 
+      -- compiles the source.
+
+2. make clean
+      -- remove all .o files
+
+3. make wipe
+      -- remove all .o and binexec
+
+Runtime: Run on all two separate machines, or lab computers. 
+
+1. Client Program.
+NAME
+     client -- contacts a server to obtain a chunk of a file from the server 
+               using pthreadds. Collects all chunks then it puts them together 
+               to form a whole file.
+
+SYNOPSIS
+     client <filename> <number of connections>
+
+DESCRIPTION
+     This program contacts a server to obtain a chunk of a file from the server 
+     using pthreadds. Collects all chunks then it puts them together 
+     to form a whole file.
+
+OPERANDS
+     The two operands are first an filename to be retreived, and second a 
+     number of threads that it wants to use to collect the file using. Really 
+     then number of server connections it wants to make. 
+
+EXIT STATUS
+
+     0    No errors were detected.
+     1    One or more errors were detected and error messages were
+          printed.
+ errno    If a man page call detects an error, perror prints a sys
+          message and exits with return value of errno.
+.c and utils.h
+  -- basic library for printing debug statements
+  -- error handling for read and write system calls.
+
+2. Server PRogram
+NAME
+     server -- returns a formatted time to a requesting client
+
+SYNOPSIS
+     server [Port]
+
+DESCRIPTION  
+     This program accepts the client port number as it's arguments,
+     and while running, if contacted by a client, returns a chunk 
+     of a file to the user.
+
+OPERANDS
+     The only operand is a valid unused port number. If no port 
+     number is input to the program, the program will exit with
+     an error.
+
+EXIT STATUS
+
+     0    No errors were detected.
+     1    One or more errors were detected and error messages were
+          printed.
+ errno    If a man page call detects an error, perror prints a sys
+          message and exits with return value of errno.
+
+
+3. utils.c and utils.h
+  -- basic library for printing debug statements
+  -- error handling for read and write system calls.
+  -- writes chunks of files and returns file size
+  -- searches for files in a directory.
+
+4. Makefile
+   all:
+       - compiles all included code.
+       - gives a binexec for server and client
+
+   clean:
+       - removes all .o files
+
+   wipe:
+       - removes all .o files as well as all binexec files
+
+   testcli:
+       - runs the shell script that tests the client and server.
+       - make sure that the server is running before testing
+       - also make sure that the server ip and port number are correct
+         for your usage. GRADER THIS WILL MATTER FOR YOU IF YOU USE THIS.
+
+5. lab1-app_protocol-mbaptist.pdf
+    -- short documen describing my app layer protocol and how the client
+       and server talk.
