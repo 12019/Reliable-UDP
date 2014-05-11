@@ -35,7 +35,7 @@ void check_socket(int fd);
 void check_connection(int val);
 
 /**
- * Checks the current directory for the file filename. If file name is found retrieve_file will attepmt to open the file using fopen. If not an error message will be returned. 
+ * Checks the current directory for the file filename. If file name is found retrieve_file will attepmt to open the file using fopen. If not an error message will be returned. fclose(3) must be called or memory leak will occur. 
  *
  * @param filename The file to be searched for and opened.
  * @param mode The mode in which the file will be opened.

@@ -47,7 +47,9 @@ FILE *retrieve_file(const char *restrict filename, const char* restrict mode) {
    if (d) {
       while ((dir = readdir(d)) != NULL) {
           if (strcmp(dir->d_name, filename) == 0) {
-             return fopen(filename, mode);
+             FILE *file = fopen(filename, mode);
+             closedir(d);
+             return file; 
           }
       }
       fprintf(stderr, "Error: no file matching %s exists in current directory.\n", filename);
