@@ -349,14 +349,19 @@ void *handle_client_request(void *c) {
                 }
                 case 4: // receive ack and send next data.
                 {
-                    if (bytessent <= chunksize) {
-                        mftp_packet data = get_file_chunk(chunksize*offset + bytessent, fileserv, p.seq);
+                    if (bytessent < chunksize) {
+                        mftp_packet data = get_file_chunk(chunksize*offset + bytessent, fileserv, p.seq, chunksize, offset);
+
                         int wc = send_dgram(clisock, &client, clen, data);
                         if (wc == 0) {
                             fprintf(stderr, "Error: sendto()) error.\n");
                         } else {
-                            bytessent += 1023;
-                            DEBUGF("Write Success (data) in state 4, %d.\n", bytessent);
+                            if ((chunksize - bytessent) > 1023) {
+                                bytessent += 1023;
+                            } else {
+                               bytessent += (chunksize - bytessent);
+                            }
+                            DEBUGF("Write Success (data) in state 4, %d, out of %d.\n", chunksize*offset + bytessent, chunksize*(offset+1));
                             last_p = data;
                             last_packet_seq = p.seq;
                         }

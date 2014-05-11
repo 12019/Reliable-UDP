@@ -66,16 +66,23 @@ int get_file_size(FILE *restrict file) {
    return size;
 }
 
-mftp_packet get_file_chunk(int f_offset, FILE *restrict stream, int seq) {
+mftp_packet get_file_chunk(int f_offset, FILE *restrict stream, int seq, int chunksize, int cnum) {
     char buffer[1024]; // buffer to hold file chunk
     bzero(buffer, sizeof(buffer));
     int ls = lseek(fileno(stream), f_offset, SEEK_SET);
     if (ls == -1) {
        fprintf(stderr, "Error: seeking to requested chunk location failed. File buffer pointer at unknown location.\n");
     }
+    int bytes_to_read = 0;
+    if (chunksize*(cnum + 1) - f_offset > 1023) {
+        bytes_to_read = 1023;
+    } else {
+        bytes_to_read = chunksize*(cnum + 1) - f_offset;
+    }
+    DEBUGF("CHUNK %d OFFSET %d BYTES TO READ: %d\n", chunksize*(cnum + 1), f_offset, bytes_to_read);
     int numbytes = 0;
-    while (numbytes != 1023) {
-       int x = read(fileno(stream), buffer, sizeof(buffer) - 1);
+    while (numbytes != bytes_to_read) {
+       int x = read(fileno(stream), buffer, bytes_to_read);
        if (x == 0 || x < -1) {
           fprintf(stderr, "Warning: reading from file into send buffer either finished or failed. Number of bytes read: %d\n", numbytes);
           break;

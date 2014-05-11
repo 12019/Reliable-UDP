@@ -59,9 +59,11 @@ int get_file_size(FILE *restrict filename);
  * @param f_offset The offset to index into the file.
  * @param stream The file to read from to send the chunk.
  * @param seq The sequence number.
+ * @param chunksize The chunksize of that the thread is serving.
+ * @param cnum The connection number of the n connections (0 - n-1).
  *
  */
-mftp_packet get_file_chunk(int f_offset, FILE *restrict stream, int seq);
+mftp_packet get_file_chunk(int f_offset, FILE *restrict stream, int seq, int chinksize, int cnum);
 
 /**
  * Allows for debugging print statements to be made and easily turned off for release build

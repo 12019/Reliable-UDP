@@ -208,7 +208,7 @@ int main(int argc, char **argv) {
     DEBUGF("Thread returned. valid:%d\n", validipnum);
     threadexit[i] = result;
   }
-  DEBUGF("All threads have complete. Building file.");
+  DEBUGF("All threads have complete. Building file.\n");
   
   
   // free thread args
@@ -271,7 +271,7 @@ int main(int argc, char **argv) {
     }
     fclose(newfile);
     fclose(threadfile);
-
+    
     // clean up threadfile.
     int rm = remove(buffer);
     if (rm == 0) {
@@ -335,12 +335,12 @@ void *thread_get_chunk(void *arg) {
    // loop until entire chunk of file has been recieved. 
    while (1) {
 
-       DEBUGF("Thread %d Posix thread waiting on select().\n", targ.validipnum);
        struct timeval tv = {0,0};
        tv.tv_sec = 5;
        fd_set read_fds = master;
 
        if (state == 6) break;// break from while if we reached last stage
+       DEBUGF("Thread %d Posix thread waiting on select().\n", targ.validipnum);
 
        if (select(clisock + 1, &read_fds, NULL, NULL, &tv) < 0) {
           fprintf(stderr, "Error: select() failed.\n");
@@ -363,7 +363,7 @@ void *thread_get_chunk(void *arg) {
               pthread_exit((void*)errno);
           } else {
               mftp_packet sdata = parse_dgram(buffer);
-              //DEBUGF("data = %s, flag = %d, seq = %d.\n", sdata.data, sdata.flag, sdata.seq);
+              DEBUGF("Thread %d, data = %s, flag = %d, seq = %d.\n", targ.validipnum, sdata.data, sdata.flag, sdata.seq);
 
               // if server sends an error exit thread. 
               if (sdata.flag == ERROR) {
