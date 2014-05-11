@@ -121,7 +121,7 @@ void send_error(int sequence_number, int clisock, sockaddr_in client, int clen);
  *
  * @return Returns 1 if successful and 0 if it fails. Approriate messages are printed to stderr.
  */
-int send_dgram(int socket, const struct sockaddr_in *cli, socklen_t dlen, const mftp_packet data);
+int send_dgram(int socket, const struct sockaddr_in *cli, int dlen, const mftp_packet data);
 
 /**
  * Parses incoming datagrams. runs the deserializer.

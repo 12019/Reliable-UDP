@@ -54,8 +54,8 @@ EXIT STATUS
 #define SUCCESS   0
 #define FAILURE   1
 
-typedef struct sockaddr sockaddr;
-typedef struct sockaddr_in sockaddr_in;
+//typedef struct sockaddr sockaddr;
+//typedef struct sockaddr_in sockaddr_in;
 
 static uint8_t exit_status = SUCCESS;
 static uint8_t threadcount = 0;

@@ -103,7 +103,7 @@ void send_ack(int seq, int clisock, const struct sockaddr_in client, int clen) {
 }
 
 // returns 1 if success 0 if fail.
-int send_dgram(int socket, const struct sockaddr_in *cli, socklen_t dlen, const mftp_packet data) {
+int send_dgram(int socket, const struct sockaddr_in *cli, int dlen, const mftp_packet data) {
     unsigned char buffer[2048], *ptr;
     bzero(buffer, sizeof(buffer));
     ptr = serialize_packet(data, buffer);
