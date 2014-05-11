@@ -1,5 +1,5 @@
 // File: client.c    
-// Created April 7, 2014
+// Created May 8, 2014
 // Michael Baptist - mbaptist@ucsc.edu
 
 /*******
@@ -115,7 +115,15 @@ int main(int argc, char **argv) {
 
 
    pthread_t threadID[connectnum];
+   // make threads joinable for portability
+   pthread_attr_t attr;
+   pthread_attr_init(&attr);
+   pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
    void *threadexit[connectnum];
+
+   //create array for dynamic threadargs.
+   unsigned char *targ[connectnum];
+   bzero(targ, sizeof(targ));
   
   //Load up structs with the server information
   // find information from the file server-info.txt
@@ -179,44 +187,100 @@ int main(int argc, char **argv) {
         p.port = port;
         memcpy(p.filename, filename, 256);
         p.validipnum = validipnum;
-        unsigned char buffer[2048];
-        bzero(buffer, sizeof(buffer));
-        serialize_threadargs(p, buffer);
-        pthread_create(&threadID[validipnum], NULL, thread_get_chunk, (void*)buffer);
+        targ[validipnum] = malloc(sizeof(struct threadargs));
+        bzero(targ[validipnum], sizeof(struct threadargs));
+        serialize_threadargs(p, targ[validipnum]);
+        
+
+        pthread_create(&threadID[validipnum], &attr, thread_get_chunk, (void*)targ[validipnum]);
         validipnum++;
         if (validipnum == connectnum) break;
     }
   }
+  fclose(serverlist);
 
   
   void *result = NULL;
+  pthread_attr_destroy(&attr);
   for (int i = 0; i < validipnum; ++i) {
     result = threadexit[i];
     pthread_join(threadID[i], &result);
     DEBUGF("Thread returned. valid:%d\n", validipnum);
     threadexit[i] = result;
   }
+  DEBUGF("All threads have complete. Building file.");
+  
+  
+  // free thread args
+  for (int i = 0; i < validipnum; i++) {
+      free(targ[i]);
+  }
+  
 
-  /*
+  // build full file from file parts.
   for (int i = 0; i < validipnum; ++i) {
-    FILE *newfile = fopen(filename, "w+");
+
+    // create or open the new file.
+    FILE *newfile = NULL;
+    if (i == 0) {
+        newfile = fopen(filename, "w+");
+    } else {
+        newfile = fopen(filename, "a"); 
+    }
     if (newfile == NULL) {
        fprintf(stderr, "Error: Creation of file: %s failed.\n", filename);
        return FAILURE;
     } else {
        DEBUGF("File opened.\n");
     }
-    char *data = (char *)threadexit[i];
-    int wc = write(fileno(newfile), data, cs);
+
+    // open the thread files.
+    char buffer[16];
+    bzero(buffer, sizeof(buffer));
+    sprintf(buffer, "%d", i);
+    FILE *threadfile = fopen(buffer, "r");
+    if (threadfile == NULL) {
+       fprintf(stderr, "Error: Creation of file: %s failed.\n", buffer);
+       fclose(newfile);
+       return FAILURE;
+    } else {
+       DEBUGF("File: %s opened.\n", buffer);
+    }
+
+    // get thread file size
+    int filesize = get_file_size(threadfile);
+    char buf[filesize+1];
+    bzero(buf, sizeof(buf));
+
+    // read contents of thread file and write to main file
+    int rc = read(fileno(threadfile), buf, sizeof(buf));
+    if (rc == filesize) {
+        DEBUGF("Read threadfile succesfully.\n");
+    } else {
+        DEBUGF("Something went wrong the reading the thread file.\n");
+    }
+
+    int wc = write(fileno(newfile), buf, filesize);
     if (wc < 0) {
        fprintf(stderr, "Error: write(2) error when write to file: %s.\n", filename);
+       fclose(threadfile);
+       fclose(newfile);
        return FAILURE;
     } else {
        DEBUGF("Write Success: %s.\n", filename);
-       free(result);
+    }
+    fclose(newfile);
+    fclose(threadfile);
+
+    // clean up threadfile.
+    int rm = remove(buffer);
+    if (rm == 0) {
+        DEBUGF("Clean up for file: %s successful.\n", buffer);
+    } else {
+        DEBUGF("Something went wrong on clean up. %s.\n", strerror(errno));
     }
   }
-  */
+  
   
   return SUCCESS;
 }
@@ -226,25 +290,25 @@ void *thread_get_chunk(void *arg) {
    // parse argument string
    sockaddr_in sockinfo;
    sockinfo.sin_family = AF_INET; 
-   struct threadargs targs = deserialize_threadargs((unsigned char *)arg);
-   DEBUGF("thread recieved: %d, %s, %d, %s, %d\n", targs.cnum, targs.address, targs.port, targs.filename, targs.validipnum);
+   struct threadargs targ = deserialize_threadargs((unsigned char *)arg);
+   DEBUGF("thread recieved: %d, %s, %d, %s, %d\n", targ.cnum, targ.address, targ.port, targ.filename, targ.validipnum);
 
    // Open the client socket and check that it is valid.
    int clisock = socket(AF_INET, SOCK_DGRAM,0);
    if (clisock < 0) {
        perror("ERROR: SOCKET CORRUPT ");
-       return (void*)errno;
+       pthread_exit((void*)errno);
    } else {
-       DEBUGF("Client Socket: %d\n", clisock);
+       DEBUGF("Thread:%d Client Socket: %d\n", targ.validipnum, clisock);
    }
 
    // set up server information
    int seqnum = 1;
-   sockinfo.sin_port = htons(targs.port);
-   inet_aton(targs.address, &sockinfo.sin_addr);
+   sockinfo.sin_port = htons(targ.port);
+   inet_aton(targ.address, &sockinfo.sin_addr);
 
    // send empty packet to server
-   DEBUGF("Sending ack to server to start data transfer.\n");
+   DEBUGF("Thread %d Sending ack to server to start data transfer.\n", targ.validipnum);
    send_ack(seqnum++, clisock, sockinfo, sizeof(sockinfo));
 
    // create MAIN timeout for if the connection goes dead for a while then
@@ -271,7 +335,7 @@ void *thread_get_chunk(void *arg) {
    // loop until entire chunk of file has been recieved. 
    while (1) {
 
-       DEBUGF("Posix thread waiting on select().\n");
+       DEBUGF("Thread %d Posix thread waiting on select().\n", targ.validipnum);
        struct timeval tv = {0,0};
        tv.tv_sec = 5;
        fd_set read_fds = master;
@@ -285,7 +349,7 @@ void *thread_get_chunk(void *arg) {
           }
           exit_status = FAILURE;
        }
-       DEBUGF("select() has returned.\n");
+       DEBUGF("Thread %d select() has returned.\n", targ.validipnum);
 
        if (FD_ISSET(clisock, &read_fds)) {
           // process server response.
@@ -296,14 +360,14 @@ void *thread_get_chunk(void *arg) {
           if (result == -1) {
               // handle error
               perror("Error: recvfrom() failed. Exiting thread.");
-              return (void*)errno;
+              pthread_exit((void*)errno);
           } else {
               mftp_packet sdata = parse_dgram(buffer);
-              DEBUGF("data = %s, flag = %d, seq = %d.\n", sdata.data, sdata.flag, sdata.seq);
+              //DEBUGF("data = %s, flag = %d, seq = %d.\n", sdata.data, sdata.flag, sdata.seq);
 
               // if server sends an error exit thread. 
               if (sdata.flag == ERROR) {
-                  return NULL;
+                  pthread_exit(NULL);
               }
 
               // process packet
@@ -313,14 +377,14 @@ void *thread_get_chunk(void *arg) {
                     mftp_packet fileinfo;
                     fileinfo.flag = DATA;
                     fileinfo.seq = seqnum++;   
-                    memcpy(fileinfo.data, targs.filename, 256);
+                    memcpy(fileinfo.data, targ.filename, 256);
                     last_p = fileinfo;
-                    DEBUGF("File: %s requested. Sending to server.\n", fileinfo.data);
+                    DEBUGF("Thread %d File: %s requested. Sending to server.\n", targ.validipnum, fileinfo.data);
                     int wc = send_dgram(clisock, &servinfo, slen, fileinfo);
                     if (wc == FALSE) {
                        fprintf(stderr, "Error: sendto()) error.\n");
                        close(clisock);
-                       return NULL;
+                       pthread_exit(NULL);
                     }
                     last_packet = DATA;
                     last_packet_seq = fileinfo.seq;
@@ -330,16 +394,16 @@ void *thread_get_chunk(void *arg) {
                 case 2: // send connect num to server.
                 {
                     mftp_packet connect_num;
-                    sprintf(connect_num.data, "%d", targs.cnum);
+                    sprintf(connect_num.data, "%d", targ.cnum);
                     connect_num.flag = DATA;
                     connect_num.seq = seqnum++;
                     last_p = connect_num;
-                    DEBUGF("Connect num being sent: %s.\n", connect_num.data);
+                    DEBUGF("Thread %d Connect num being sent: %s.\n", targ.validipnum, connect_num.data);
                     int wc = send_dgram(clisock, &servinfo, slen, connect_num);
                     if (wc == FALSE) {
                        fprintf(stderr, "Error: sendto()) error.\n");
                        close(clisock);
-                       return NULL;
+                       pthread_exit(NULL);
                     }
                     last_packet = DATA;
                     last_packet_seq = connect_num.seq;
@@ -349,16 +413,16 @@ void *thread_get_chunk(void *arg) {
                 case 3: // send starting point of the file
                 {
                     mftp_packet offset;
-                    sprintf(offset.data, "%d", targs.validipnum);
+                    sprintf(offset.data, "%d", targ.validipnum);
                     offset.flag = DATA;
                     offset.seq = seqnum++;
                     last_p = offset;
-                    DEBUGF("Connect num being sent: %s.\n", offset.data);
+                    DEBUGF("Thread: %d Connect num being sent: %s.\n", targ.validipnum, offset.data);
                     int wc = send_dgram(clisock, &servinfo, slen, offset);
                     if (wc == FALSE) {
                        fprintf(stderr, "Error: sendto()) error.\n");
                        close(clisock);
-                       return NULL;
+                       pthread_exit(NULL);
                     }
                     last_packet = DATA;
                     last_packet_seq = offset.seq;
@@ -378,7 +442,7 @@ void *thread_get_chunk(void *arg) {
                 {
                     if (sdata.flag == DATA) {
                         char buffer[64];
-                        sprintf(buffer, "thread%d", targs.validipnum);
+                        sprintf(buffer, "%d", targ.validipnum);
                         FILE *newfile = NULL;
                         if (file_seq_num == last_packet_seq) {
                             newfile = fopen(buffer, "w+");
@@ -388,16 +452,18 @@ void *thread_get_chunk(void *arg) {
                         if (newfile == NULL) {
                            fprintf(stderr, "Error: Opening of file: %s failed.\n", buffer);
                            close(clisock);
-                           return NULL;
+                           pthread_exit(NULL);
                         } else {
-                           DEBUGF("File %s opened.\n", buffer);
+                           DEBUGF("Thread %d File %s opened.\n", targ.validipnum, buffer);
                         }
                         int wc = write(fileno(newfile), sdata.data, strlen(sdata.data));
                         if (wc < 0) {
                            fprintf(stderr, "Error: write(2) error when write to file: %s.\n", buffer);
+                           fclose(newfile);
                            close(clisock);
-                           return NULL;
+                           pthread_exit(NULL);
                         }
+                        fclose(newfile);
                         last_packet_seq = seqnum++;
                         send_ack(seqnum, clisock, servinfo, slen);
                     } else {
@@ -427,7 +493,7 @@ void *thread_get_chunk(void *arg) {
               if (wc == 0) {
                   fprintf(stderr, "Error: sendto()) error.\n");
               } else {
-                  DEBUGF("Resending last data. Write Success (data), %d.\n");
+                  DEBUGF("Thread %d Resending last data. Write Success (data), %d.\n", targ.validipnum, last_p.seq);
               }
           }
        }
@@ -436,7 +502,7 @@ void *thread_get_chunk(void *arg) {
        }
    }
    close(clisock);  
-   return NULL;
+   pthread_exit(NULL);
 }
 
 void check_error(char *x, char *y) {

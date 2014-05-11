@@ -216,7 +216,7 @@ void *handle_client_request(void *c) {
    // bind the new socket to a different port than the listening port.
    sockaddr_in serv_sock;
    serv_sock.sin_family = AF_INET;
-   serv_sock.sin_port = htons(client.sin_port);
+   serv_sock.sin_port = htons(0);
    serv_sock.sin_addr.s_addr = htonl(INADDR_ANY);
    memset(serv_sock.sin_zero, '\0', sizeof(serv_sock.sin_zero));
    sockaddr_in *serv_sock_ref = &serv_sock;
