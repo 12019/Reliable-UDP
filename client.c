@@ -201,7 +201,7 @@ int main(int argc, char **argv) {
       fprintf(stderr, "All servers in the list failed.\n");
       exit(FAILURE);
   }
-  
+
   void *result = NULL;
   for (int i = 0; i < validipnum; ++i) {
     pthread_join(threadID[i], &result);
@@ -317,6 +317,11 @@ int main(int argc, char **argv) {
         DEBUGF("Something went wrong on clean up. %s.\n", strerror(errno));
     }
   }
+
+  // write newline on file for some systems.  
+  FILE* newfile = fopen(filename, "a"); 
+  write(fileno(newfile), "\n", strlen("\n"));
+  fclose(newfile);
   
   
   return SUCCESS;
