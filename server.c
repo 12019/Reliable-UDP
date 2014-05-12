@@ -208,7 +208,8 @@ void *handle_client_request(void *c) {
    int clisock = socket(AF_INET, SOCK_DGRAM, 0);
    if (clisock < 0) {
       perror("ERROR: SOCKET CORRUPT ");
-      return (void*)errno;
+      int ptr = FAILURE;
+      pthread_exit((void*)&ptr);
    } else {
       DEBUGF("Server Socket: %d\n", clisock);
    }
@@ -223,7 +224,8 @@ void *handle_client_request(void *c) {
    int er_chk = bind(clisock, (sockaddr*)serv_sock_ref, sizeof(serv_sock));
    if (er_chk < 0) {
       perror("Error: Socket to Address bind failure ");
-      return (void*)errno;
+      int ptr = FAILURE;
+      pthread_exit((void*)&ptr);
    } else {
       DEBUGF("Bind Success on port:%hu.\n", serv_sock.sin_port);
    }
@@ -281,7 +283,8 @@ void *handle_client_request(void *c) {
           if (result == -1) {
               // handle error
               perror("Error: recvfrom() failed. ");
-              return (void*)errno;
+              int ptr = FAILURE;
+              pthread_exit((void*)&ptr);
           } else {
               mftp_packet p = parse_dgram(buffer);
               DEBUGF("data = %s, flag = %d, seq = %d, state = %d.\n", p.data, p.flag, p.seq, state);
@@ -295,7 +298,8 @@ void *handle_client_request(void *c) {
                     if (fileserv == NULL) {
                        send_error(p.seq, clisock, client, clen);
                        close_client(clisock, &master);
-                       return NULL;
+                       int ptr = FAILURE;
+                       pthread_exit((void*)&ptr);
                     } else {
                        DEBUGF("File: %s requested.\n", p.data);
                        sprintf(filename, "%s", p.data);
@@ -316,7 +320,8 @@ void *handle_client_request(void *c) {
                        fprintf(stderr, "Error: Invalid chunksize value: %s.\n", p.data);
                        send_error(1, clisock, client, clen);
                        close_client(clisock, &master);
-                       return NULL;
+                       int ptr = FAILURE;
+                       pthread_exit((void*)&ptr);
                     } else {
                        int filesize = get_file_size(fileserv);
                        chunksize = filesize / cnum;
@@ -337,7 +342,8 @@ void *handle_client_request(void *c) {
                        fprintf(stderr, "Error: Invalid file offset value: %s.\n", p.data);
                        send_error(1, clisock, client, clen);
                        close_client(clisock, &master);
-                       return NULL;
+                       int ptr = FAILURE;
+                       pthread_exit((void*)&ptr);
                     } else {
                        DEBUGF("Filename: %s. Chunksize: %d. Offset: %d.\n", filename, chunksize, offset);
                        send_ack(p.seq, clisock, client, clen);
@@ -404,7 +410,7 @@ void *handle_client_request(void *c) {
        }
    }
    close_client(clisock, &master);  
-   return NULL;
+   pthread_exit( NULL );
 }
 
 void close_client(int clisock, fd_set *master) {

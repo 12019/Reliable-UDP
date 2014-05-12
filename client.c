@@ -44,6 +44,7 @@ EXIT STATUS
 #include <unistd.h>      // close(2)
 #include <string.h>      // string lib
 #include <pthread.h>     // pthread lib
+#include <sys/stat.h>    // stats lib
 
 // comment out for no debugging prints statements
 //#define NDEBUG NDEBUG
@@ -55,9 +56,6 @@ EXIT STATUS
 #define SUCCESS    0
 #define FAILURE    1
 #define FALSE      0
-
-typedef struct sockaddr sockaddr;
-typedef struct sockaddr_in sockaddr_in;
 
 static uint8_t exit_status = SUCCESS;
 
@@ -199,18 +197,57 @@ int main(int argc, char **argv) {
   }
   fclose(serverlist);
 
+  if (validipnum == 0) {
+      fprintf(stderr, "All servers in the list failed.\n");
+      exit(FAILURE);
+  }
   
   void *result = NULL;
-  pthread_attr_destroy(&attr);
   for (int i = 0; i < validipnum; ++i) {
-    result = threadexit[i];
     pthread_join(threadID[i], &result);
     DEBUGF("Thread returned. valid:%d\n", validipnum);
     threadexit[i] = result;
   }
   DEBUGF("All threads have complete. Building file.\n");
   
+  // find a good server incase one of the threads failed to get a chunk.
+  int good_server = -1;
+  DEBUGF("Searching for good server.\n");
+  for (int i = 0; i < validipnum; ++i) {
+     struct stat stats;
+     char buffer[256];
+     bzero(buffer, sizeof(buffer));
+     sprintf(buffer, "%d", i);
+     if (stat(buffer, &stats) == 0) { 
+        good_server = i;
+        break;
+     }
+  }
   
+  // check to make sure all threads didnt fail 
+  DEBUGF("Checking thread returns for failed threads.\n");
+  for (int i = 0; i < validipnum; ++i) { 
+      int returnval = (int)threadexit[i];
+      if (returnval == FAILURE) {
+          pthread_t threadID;
+          DEBUGF("Thread %d returned with a failure getting chunk now.\n", i);
+          struct threadargs p = deserialize_threadargs(targ[i]);
+          DEBUGF("Getting good server ip and port.\n");
+          struct threadargs good = deserialize_threadargs(targ[good_server]);
+          memcpy(p.address, good.address, 64);
+          p.port = good.port;
+          DEBUGF("Recreating threadargs with good server.\n");
+          serialize_threadargs(p, targ[i]);
+          pthread_create(&threadID, &attr, thread_get_chunk, (void*)targ[i]);  
+
+          void *result = threadexit[i];
+          pthread_join(threadID, &result);
+          DEBUGF("Thread returned. valid:%d\n", i);
+          threadexit[i] = result;
+      }
+  }
+  
+  pthread_attr_destroy(&attr);
   // free thread args
   for (int i = 0; i < validipnum; i++) {
       free(targ[i]);
@@ -240,7 +277,7 @@ int main(int argc, char **argv) {
     sprintf(buffer, "%d", i);
     FILE *threadfile = fopen(buffer, "r");
     if (threadfile == NULL) {
-       fprintf(stderr, "Error: Creation of file: %s failed.\n", buffer);
+       fprintf(stderr, "Error: Couldn't read file: %s .Failure.\n", buffer);
        fclose(newfile);
        return FAILURE;
     } else {
@@ -297,7 +334,7 @@ void *thread_get_chunk(void *arg) {
    int clisock = socket(AF_INET, SOCK_DGRAM,0);
    if (clisock < 0) {
        perror("ERROR: SOCKET CORRUPT ");
-       pthread_exit((void*)errno);
+       pthread_exit((void*)FAILURE);
    } else {
        DEBUGF("Thread:%d Client Socket: %d\n", targ.validipnum, clisock);
    }
@@ -333,6 +370,7 @@ void *thread_get_chunk(void *arg) {
    int connection_timeouts = 0;
 
    // loop until entire chunk of file has been recieved. 
+   int exitstatus = SUCCESS;
    while (1) {
 
        struct timeval tv = {0,0};
@@ -360,14 +398,14 @@ void *thread_get_chunk(void *arg) {
           if (result == -1) {
               // handle error
               perror("Error: recvfrom() failed. Exiting thread.");
-              pthread_exit((void*)errno);
+              pthread_exit((void*)FAILURE);
           } else {
               mftp_packet sdata = parse_dgram(buffer);
-              DEBUGF("Thread %d, data = %s, flag = %d, seq = %d.\n", targ.validipnum, sdata.data, sdata.flag, sdata.seq);
+              DEBUGF("Thread %d, data = %.10s, flag = %d, seq = %d.\n", targ.validipnum, sdata.data, sdata.flag, sdata.seq);
 
               // if server sends an error exit thread. 
               if (sdata.flag == ERROR) {
-                  pthread_exit(NULL);
+                  pthread_exit((void*)FAILURE);
               }
 
               // process packet
@@ -384,7 +422,7 @@ void *thread_get_chunk(void *arg) {
                     if (wc == FALSE) {
                        fprintf(stderr, "Error: sendto()) error.\n");
                        close(clisock);
-                       pthread_exit(NULL);
+                       pthread_exit((void*)FAILURE);
                     }
                     last_packet = DATA;
                     last_packet_seq = fileinfo.seq;
@@ -403,7 +441,7 @@ void *thread_get_chunk(void *arg) {
                     if (wc == FALSE) {
                        fprintf(stderr, "Error: sendto()) error.\n");
                        close(clisock);
-                       pthread_exit(NULL);
+                       pthread_exit((void*)FAILURE);
                     }
                     last_packet = DATA;
                     last_packet_seq = connect_num.seq;
@@ -422,7 +460,7 @@ void *thread_get_chunk(void *arg) {
                     if (wc == FALSE) {
                        fprintf(stderr, "Error: sendto()) error.\n");
                        close(clisock);
-                       pthread_exit(NULL);
+                       pthread_exit((void*)FAILURE);
                     }
                     last_packet = DATA;
                     last_packet_seq = offset.seq;
@@ -452,7 +490,7 @@ void *thread_get_chunk(void *arg) {
                         if (newfile == NULL) {
                            fprintf(stderr, "Error: Opening of file: %s failed.\n", buffer);
                            close(clisock);
-                           pthread_exit(NULL);
+                           pthread_exit((void*)FAILURE);
                         } else {
                            DEBUGF("Thread %d File %s opened.\n", targ.validipnum, buffer);
                         }
@@ -461,7 +499,7 @@ void *thread_get_chunk(void *arg) {
                            fprintf(stderr, "Error: write(2) error when write to file: %s.\n", buffer);
                            fclose(newfile);
                            close(clisock);
-                           pthread_exit(NULL);
+                           pthread_exit((void*)FAILURE);
                         }
                         fclose(newfile);
                         last_packet_seq = seqnum++;
@@ -484,6 +522,7 @@ void *thread_get_chunk(void *arg) {
           connection_timeouts++;
           if (connection_timeouts > 5) {
               breakloop = 1;
+              exitstatus = FAILURE;
           }
           if (last_packet == ACK) {
              // retransmit ack
@@ -502,7 +541,11 @@ void *thread_get_chunk(void *arg) {
        }
    }
    close(clisock);  
-   pthread_exit(NULL);
+   if (FAILURE == exitstatus) {
+       pthread_exit((void*)FAILURE);
+   } else {
+       pthread_exit((void*)SUCCESS);
+   }
 }
 
 void check_error(char *x, char *y) {
